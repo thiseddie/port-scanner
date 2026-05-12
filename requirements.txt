@@ -1,0 +1,5 @@
+colorama==0.4.6
+
+this project only requires colorama for colored terminal output install dependencies using:
+
+pip install -r requirements.txt

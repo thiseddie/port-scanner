@@ -1,2 +1,18 @@
-# port-scanner
-## GitHub Repository Description  Fast multithreaded TCP port scanner built with Python featuring banner grabbing, service detection, concurrent scanning, JSON export, and a professional CLI interface for network reconnaissance and security testing.
+# Python Advanced Port Scanner
+
+A fast multithreaded TCP port scanner built using Python.
+
+## Features
+
+- Multithreaded scanning
+- Banner grabbing
+- JSON export
+- Clean CLI interface
+- Service detection
+- Colorized output
+- Error handling
+
+---
+
+git clone https://github.com/thiseddie/port-scanner.git
+cd port-scanner

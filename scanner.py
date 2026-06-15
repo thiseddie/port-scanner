@@ -1,4 +1,3 @@
-
 import socket
 import argparse
 import json
@@ -7,56 +6,23 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from colorama import Fore, Style, init
 
-# Initialize colorama
+# Initialize colorama for clean terminal formatting
 init(autoreset=True)
 
 DEFAULT_TIMEOUT = 1
 MAX_THREADS = 200
 
+# Fallback lookup dictionary for common services if system resolution fails
 COMMON_SERVICES = {
-    20: "FTP Data",
-    21: "FTP",
-    22: "SSH",
-    23: "Telnet",
-    25: "SMTP",
-    53: "DNS",
-    67: "DHCP",
-    68: "DHCP",
-    69: "TFTP",
-    80: "HTTP",
-    110: "POP3",
-    119: "NNTP",
-    123: "NTP",
-    135: "MSRPC",
-    137: "NetBIOS",
-    138: "NetBIOS",
-    139: "SMB",
-    143: "IMAP",
-    161: "SNMP",
-    389: "LDAP",
-    443: "HTTPS",
-    445: "SMB",
-    465: "SMTPS",
-    514: "Syslog",
-    587: "SMTP TLS",
-    631: "IPP",
-    993: "IMAPS",
-    995: "POP3S",
-    1433: "MSSQL",
-    1521: "Oracle DB",
-    1723: "PPTP",
-    1883: "MQTT",
-    2049: "NFS",
-    2082: "cPanel",
-    2083: "cPanel SSL",
-    3306: "MySQL",
-    3389: "RDP",
-    5432: "PostgreSQL",
-    5900: "VNC",
-    6379: "Redis",
-    8080: "HTTP Alternate",
-    8443: "HTTPS Alternate",
-    9200: "Elasticsearch",
+    20: "FTP Data", 21: "FTP", 22: "SSH", 23: "Telnet", 25: "SMTP",
+    53: "DNS", 67: "DHCP", 68: "DHCP", 69: "TFTP", 80: "HTTP",
+    110: "POP3", 119: "NNTP", 123: "NTP", 135: "MSRPC", 137: "NetBIOS",
+    138: "NetBIOS", 139: "SMB", 143: "IMAP", 161: "SNMP", 389: "LDAP",
+    443: "HTTPS", 445: "SMB", 465: "SMTPS", 514: "Syslog", 587: "SMTP TLS",
+    631: "IPP", 993: "IMAPS", 995: "POP3S", 1433: "MSSQL", 1521: "Oracle DB",
+    1723: "PPTP", 1883: "MQTT", 2049: "NFS", 2082: "cPanel", 2083: "cPanel SSL",
+    3306: "MySQL", 3389: "RDP", 5432: "PostgreSQL", 5900: "VNC", 6379: "Redis",
+    8080: "HTTP Alternate", 8443: "HTTPS Alternate", 9200: "Elasticsearch",
     27017: "MongoDB"
 }
 
@@ -79,30 +45,28 @@ class PortScanner:
             result = sock.connect_ex((self.target, port))
 
             if result == 0:
-                service = COMMON_SERVICES.get(port, "Unknown")
-                banner = ""
+                # Attempt to get the system service name, fallback to dictionary if unknown
+                try:
+                    service = socket.getservbyport(port, "tcp")
+                except (OSError, OverflowError):
+                    service = COMMON_SERVICES.get(port, "Unknown")
 
+                banner_data = ""
                 if self.banner:
-                    banner = self.grab_banner(sock)
+                    banner_data = self.grab_banner(sock)
 
                 data = {
                     "port": port,
                     "status": "open",
-                    "service": service,
-                    "banner": banner.strip()
+                    "service": service.upper(),
+                    "banner": banner_data.strip()
                 }
-
                 return data
 
-        except socket.gaierror:
+        except (socket.gaierror, socket.timeout):
             pass
-
-        except socket.timeout:
-            pass
-
         except Exception:
             pass
-
         finally:
             sock.close()
 
@@ -110,6 +74,7 @@ class PortScanner:
 
     def grab_banner(self, sock):
         try:
+            # Send a basic standard payload to prod a banner response
             sock.sendall(b"HELLO\r\n")
             response = sock.recv(1024)
             return response.decode(errors="ignore")
@@ -124,6 +89,7 @@ class PortScanner:
 
         start_time = time.time()
 
+        # Thread management for connection pooling
         with ThreadPoolExecutor(max_workers=self.threads) as executor:
             futures = {
                 executor.submit(self.scan_port, port): port
@@ -132,10 +98,8 @@ class PortScanner:
 
             for future in as_completed(futures):
                 result = future.result()
-
                 if result:
                     self.results.append(result)
-
                     print(
                         f"{Fore.GREEN}[OPEN]{Style.RESET_ALL} "
                         f"Port {result['port']:5} | "
@@ -144,16 +108,62 @@ class PortScanner:
                     )
 
         elapsed = round(time.time() - start_time, 2)
-
         print(f"\n{Fore.YELLOW}[+] Scan completed in {elapsed} seconds")
         print(f"{Fore.YELLOW}[+] Open ports found: {len(self.results)}\n")
 
-    def save_results(self, filename):
-        with open(filename, "w") as file:
-            json.dump(self.results, file, indent=4)
+    def save_json_results(self, filename):
+        try:
+            with open(filename, "w") as file:
+                json.dump(self.results, file, indent=4)
+            print(f"{Fore.BLUE}[+] JSON results successfully saved to {filename}")
+        except IOError as e:
+            print(f"{Fore.RED}[-] Failed to save JSON results: {e}")
 
-        print(f"{Fore.BLUE}[+] Results saved to {filename}")
+    def generate_html_report(self, filename):
+        html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Scan Report - {self.target}</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 30px; background-color: #f4f4f9; }}
+        h1 {{ color: #333; }}
+        table {{ width: 100%; border-collapse: collapse; margin-top: 20px; background: #fff; }}
+        th, td {{ padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }}
+        th {{ background-color: #4CAF50; color: white; }}
+        tr:hover {{ background-color: #f5f5f5; }}
+    </style>
+</head>
+<body>
+    <h1>Port Scan Report for {self.target}</h1>
+    <p>Generated on: {time.strftime('%Y-%m-%d %H:%M:%S')}</p>
+    <table>
+        <tr>
+            <th>Port</th>
+            <th>Service</th>
+            <th>Status</th>
+            <th>Banner Data</th>
+        </tr>
+"""
+        # Sort results sequentially before writing them to the report
+        sorted_results = sorted(self.results, key=lambda x: x['port'])
+        for result in sorted_results:
+            html += f"""        <tr>
+            <td><strong>{result['port']}</strong></td>
+            <td>{result['service']}</td>
+            <td><span style="color: green;">{result['status']}</span></td>
+            <td>{result['banner'] if result['banner'] else 'N/A'}</td>
+        </tr>\n"""
 
+        html += """    </table>
+</body>
+</html>"""
+
+        try:
+            with open(filename, "w") as f:
+                f.write(html)
+            print(f"{Fore.BLUE}[+] HTML report successfully generated at {filename}")
+        except IOError as e:
+            print(f"{Fore.RED}[-] Failed to write HTML report: {e}")
 
 
 def validate_target(target):
@@ -168,79 +178,67 @@ def validate_target(target):
             return False
 
 
-
 def parse_arguments():
     parser = argparse.ArgumentParser(
         description="Advanced Multithreaded TCP Port Scanner"
     )
-
     parser.add_argument(
         "target",
         help="Target IP address or hostname"
     )
-
     parser.add_argument(
-        "-sp",
-        "--start-port",
+        "-sp", "--start-port",
         type=int,
         default=1,
         help="Starting port (default: 1)"
     )
-
     parser.add_argument(
-        "-ep",
-        "--end-port",
+        "-ep", "--end-port",
         type=int,
         default=1024,
         help="Ending port (default: 1024)"
     )
-
     parser.add_argument(
-        "-t",
-        "--timeout",
+        "-t", "--timeout",
         type=float,
         default=DEFAULT_TIMEOUT,
         help="Socket timeout in seconds"
     )
-
     parser.add_argument(
-        "-th",
-        "--threads",
+        "-th", "--threads",
         type=int,
         default=MAX_THREADS,
         help="Number of threads"
     )
-
     parser.add_argument(
-        "-b",
-        "--banner",
+        "-b", "--banner",
         action="store_true",
         help="Enable banner grabbing"
     )
-
     parser.add_argument(
-        "-o",
-        "--output",
-        help="Save output to JSON file"
+        "-o", "--output",
+        help="Save raw data to a JSON file"
     )
-
+    parser.add_argument(
+        "-html", "--html-output",
+        help="Save results into a styled HTML web report"
+    )
     return parser.parse_args()
-
 
 
 def main():
     args = parse_arguments()
 
     if not validate_target(args.target):
-        print(f"{Fore.RED}[-] Invalid target")
+        print(f"{Fore.RED}[-] Invalid target hostname or IP address configuration.")
         return
 
     if args.start_port < 1 or args.end_port > 65535:
-        print(f"{Fore.RED}[-] Port range must be between 1 and 65535")
+        print(f"{Fore.RED}[-] Port range validation failed. Choose between 1 and 65535.")
         return
 
     if args.start_port > args.end_port:
-        print(f"{Fore.RED}[-] Start port cannot be greater than end port")
+        print(f"{Fore.RED}[-] Argument Error: Starting port cannot exceed the ending port.")
         return
 
     scanner = PortScanner(
@@ -255,10 +253,11 @@ def main():
     scanner.start_scan()
 
     if args.output:
-        scanner.save_results(args.output)
+        scanner.save_json_results(args.output)
+
+    if args.html_output:
+        scanner.generate_html_report(args.html_output)
 
 
 if __name__ == "__main__":
     main()
-
-
